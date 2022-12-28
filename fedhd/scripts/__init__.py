@@ -1,1 +1,1 @@
-from fedhd.scripts.test import main  # noqa
+from fedhd.scripts.test import test  # noqa

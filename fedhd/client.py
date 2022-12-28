@@ -7,7 +7,7 @@ import torchhd.functional as F
 
 class Client:
     def __init__(
-        self, embedding, class_hvs, dataset, nclasses, epochs, batch_size, device
+        self, embedding, class_hvs, dataset, nclasses, epochs, batch_size, gpu, verbose
     ):
         """
         Initialize the client with a model and dataset. Also specifies
@@ -19,8 +19,9 @@ class Client:
         self.ds = dataset
         self.nc = nclasses
         self.epochs = epochs
-        self.device = device
+        self.gpu = gpu
         self.bs = batch_size
+        self.verbose = verbose
         self.create_dl()
 
     def create_dl(self):
@@ -63,8 +64,10 @@ class Client:
                     self.class_hvs[label] = F.bundle(hv_label, incorrect.negative())
 
                 acc = [preds[idx] == y[idx] for idx in range(len(y))]
-                epoch_acc += sum(acc)
-            print(f"epoch: {epoch} accuracy: {epoch_acc/batch_idx}")
+                epoch_acc += sum(acc) / len(acc)
+
+            if self.verbose:
+                print(f"epoch: {epoch} accuracy: {epoch_acc/(batch_idx + 1)}")
 
     def update_model(self, new_class_hvs):
         self.class_hvs = copy.deepcopy(new_class_hvs)
