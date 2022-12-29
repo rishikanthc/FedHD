@@ -24,4 +24,5 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-fedhd = "fedhd.scripts.test:test"
+fedhd_test = "fedhd.scripts.test:cli"
+fedhd = "fedhd.scripts.experiments:main"

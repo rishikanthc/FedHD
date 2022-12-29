@@ -27,7 +27,7 @@ pass_config = click.make_pass_decorator(Config, ensure=True)
     "-v", "--verbose", is_flag=True, help="Verbose mode enables debug messages"
 )
 @pass_config
-def test(config, epochs, batch_size, dataset, gpu, dim, verbose):
+def cli(config, epochs, batch_size, dataset, gpu, dim, verbose):
     config.epochs = epochs
     config.batch_size = batch_size
     config.dataset = dataset
@@ -36,7 +36,7 @@ def test(config, epochs, batch_size, dataset, gpu, dim, verbose):
     config.verbose = verbose
 
 
-@test.command()
+@cli.command()
 @pass_config
 def client_test(config):
     click.echo("Testing client training")
@@ -59,7 +59,7 @@ def client_test(config):
     client.train()
 
 
-@test.command()
+@cli.command()
 @click.option("-nc", "--nclients", default=10, help="# of clients")
 @click.option(
     "-f",
@@ -94,7 +94,7 @@ def data_test(config, nclients, fraction, rounds):
     del trainer
 
 
-@test.command()
+@cli.command()
 @click.option("-nc", "--nclients", default=10, help="# of clients")
 @click.option(
     "-f",

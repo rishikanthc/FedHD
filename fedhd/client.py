@@ -1,3 +1,4 @@
+import click
 import torch
 import torch.utils.data as dutils
 import torchhd.functional as F
@@ -41,6 +42,10 @@ class Client:
             epoch_acc = 0
             for batch_idx, batch in enumerate(self.dl):
                 x, y = batch
+
+                if self.verbose:
+                    click.echo(f"\tDEBUG: data {x[0]}")
+
                 hvs = self.embedding(x).sign()  # bs x D
                 scores = hvs @ self.class_hvs.T  # bs x c
                 _, preds = torch.max(scores, dim=-1)
@@ -65,7 +70,7 @@ class Client:
                 epoch_acc += sum(acc) / len(acc)
 
             if self.verbose:
-                print(f"epoch: {epoch} accuracy: {epoch_acc/(batch_idx + 1)}")
+                click.echo(f"\tepoch: {epoch} accuracy: {epoch_acc/(batch_idx + 1)}")
 
     def update_model(self, new_class_hvs):
         self.class_hvs = new_class_hvs
