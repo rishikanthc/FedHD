@@ -46,7 +46,16 @@ def client_test(config):
     )
     embedding = hd.embeddings.Projection(617, config.dim)
     cv = hd.empty_hv(26, config.dim)
-    client = Client(embedding, cv, ds, 26, config.epochs, config.batch_size, config.gpu)
+    client = Client(
+        embedding,
+        cv,
+        ds,
+        26,
+        config.epochs,
+        config.batch_size,
+        config.gpu,
+        config.verbose,
+    )
     client.train()
 
 
@@ -67,12 +76,13 @@ def data_test(config, nclients, fraction, rounds):
         "/home/paperspace/codezone/data/mnist", train=True, download=True
     )
     embedding = hd.embeddings.Projection(617, config.dim)
-    cv = hd.empty_hv(26, config.dim)
 
     trainer = Trainer(
         embedding,
+        config.dim,
         ds,
-        cv,
+        None,
+        26,
         config.batch_size,
         nclients,
         fraction,
@@ -82,3 +92,41 @@ def data_test(config, nclients, fraction, rounds):
         config.verbose,
     )
     del trainer
+
+
+@test.command()
+@click.option("-nc", "--nclients", default=10, help="# of clients")
+@click.option(
+    "-f",
+    "--fraction",
+    default=0.2,
+    help="Fraction of clients involved in training rounds",
+)
+@click.option("-r", "--rounds", default=100, help="# of rounds of communication")
+@pass_config
+def fl_test(config, nclients, fraction, rounds):
+    click.echo("Testing FL pipeline")
+
+    ds = hd.datasets.ISOLET(
+        "/home/paperspace/codezone/data/mnist", train=True, download=True
+    )
+    test_ds = hd.datasets.ISOLET(
+        "/home/paperspace/codezone/data/mnist", train=False, download=True
+    )
+    embedding = hd.embeddings.Projection(617, config.dim)
+
+    trainer = Trainer(
+        embedding,
+        config.dim,
+        ds,
+        test_ds,
+        26,
+        config.batch_size,
+        nclients,
+        fraction,
+        rounds,
+        config.epochs,
+        config.gpu,
+        config.verbose,
+    )
+    trainer.train()

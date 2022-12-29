@@ -1,5 +1,3 @@
-import copy
-
 import torch
 import torch.utils.data as dutils
 import torchhd.functional as F
@@ -70,7 +68,7 @@ class Client:
                 print(f"epoch: {epoch} accuracy: {epoch_acc/(batch_idx + 1)}")
 
     def update_model(self, new_class_hvs):
-        self.class_hvs = copy.deepcopy(new_class_hvs)
+        self.class_hvs = new_class_hvs
 
     def send_model(self):
         return self.class_hvs
