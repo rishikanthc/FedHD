@@ -42,9 +42,10 @@ class Client:
             epoch_acc = 0
             for batch_idx, batch in enumerate(self.dl):
                 x, y = batch
+                x = x.float()
 
                 if self.verbose:
-                    click.echo(f"\tDEBUG: data {x[0]}")
+                    click.echo(f"\tDEBUG: data {x.dtype}")
 
                 hvs = self.embedding(x).sign()  # bs x D
                 scores = hvs @ self.class_hvs.T  # bs x c

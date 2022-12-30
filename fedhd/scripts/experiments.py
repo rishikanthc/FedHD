@@ -149,8 +149,8 @@ def ucihar(params, root):
 def pamap(params, root):
     click.echo("Running federated learning on the PAMAP Dataset")
 
-    ds = hd.datasets.PAMAP(root, subjects=[1, 2, 3, 4, 5, 6], download=True)
-    test_ds = hd.datasets.PAMAP(root, subjects=[7, 8], download=True)
+    ds = hd.datasets.PAMAP(root, subjects=[1, 2, 3, 4, 5, 6], download=False)
+    test_ds = hd.datasets.PAMAP(root, subjects=[7, 8], download=False)
 
     feat_size = ds[0][0].shape[-1]
     embedding = hd.embeddings.Projection(feat_size, params.dim)
