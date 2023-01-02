@@ -1,5 +1,8 @@
 import click
+import torch.nn as nn
 import torchhd as hd
+import torchvision.transforms as tf
+from torchvision.datasets import MNIST
 
 from fedhd.fl_trainer import Trainer
 from fedhd.ucihar import UCIHAR
@@ -78,11 +81,12 @@ def main(params, dim, batch_size, nclients, fraction, epochs, rounds, gpu, verbo
 )
 @pass_params
 def isolet(params, root):
-    click.echo("Running federated learning on the ISOLET Dataset")
 
+    click.echo("Loading ISOLET dataset")
     ds = hd.datasets.ISOLET(root, train=True, download=True)
     test_ds = hd.datasets.ISOLET(root, train=False, download=True)
 
+    click.echo("Creating HD embedding model")
     embedding = hd.embeddings.Projection(617, params.dim)
 
     trainer = Trainer(
@@ -99,6 +103,7 @@ def isolet(params, root):
         params.gpu,
         params.verbose,
     )
+    click.echo("Running federated learning on the ISOLET Dataset")
     trainer.train()
 
 
@@ -112,11 +117,12 @@ def isolet(params, root):
 )
 @pass_params
 def ucihar(params, root):
-    click.echo("Running federated learning on the UCIHAR Dataset")
 
+    click.echo("Loading UCIHAR dataset")
     ds = UCIHAR(root, train=True, download=False)
     test_ds = UCIHAR(root, train=False, download=False)
 
+    click.echo("Creating HD Embedding model")
     feat_size = ds[0][0].shape[-1]
     embedding = hd.embeddings.Projection(feat_size, params.dim)
 
@@ -134,6 +140,7 @@ def ucihar(params, root):
         params.gpu,
         params.verbose,
     )
+    click.echo("Running federated learning on the UCIHAR Dataset")
     trainer.train()
 
 
@@ -147,11 +154,12 @@ def ucihar(params, root):
 )
 @pass_params
 def pamap(params, root):
-    click.echo("Running federated learning on the PAMAP Dataset")
 
+    click.echo("Loading PAMAP dataset")
     ds = hd.datasets.PAMAP(root, subjects=[1, 2, 3, 4, 5, 6], download=False)
     test_ds = hd.datasets.PAMAP(root, subjects=[7, 8], download=False)
 
+    click.echo("Creating HD embedding model")
     feat_size = ds[0][0].shape[-1]
     embedding = hd.embeddings.Projection(feat_size, params.dim)
 
@@ -169,4 +177,45 @@ def pamap(params, root):
         params.gpu,
         params.verbose,
     )
+    click.echo("Running federated learning on the PAMAP Dataset")
+    trainer.train()
+
+
+@main.command()
+@click.option(
+    "-r",
+    "--root",
+    type=click.Path(exists=True, dir_okay=True),
+    default="/home/paperspace/codezone/data",
+    help="Root directory of the data",
+)
+@pass_params
+def mnist(params, root):
+
+    click.echo("Loading MNIST dataset")
+    transforms = tf.Compose([tf.ToTensor()])
+    ds = MNIST(root, train=True, download=True, transform=transforms)
+    test_ds = MNIST(root, train=False, download=True, transform=transforms)
+
+    click.echo("Creating HD embedding model")
+    feat_size = 784
+    embedding = nn.Sequential(
+        nn.Flatten(), hd.embeddings.Projection(feat_size, params.dim)
+    )
+
+    trainer = Trainer(
+        embedding,
+        params.dim,
+        ds,
+        test_ds,
+        18,
+        params.batch_size,
+        params.nclients,
+        params.fraction,
+        params.rounds,
+        params.epochs,
+        params.gpu,
+        params.verbose,
+    )
+    click.echo("Running federated learning on the MNIST Dataset")
     trainer.train()
