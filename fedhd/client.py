@@ -1,7 +1,75 @@
 import click
 import torch
 import torch.utils.data as dutils
+import torch.nn as nn
 import torchhd.functional as F
+import numpy as np
+import copy
+
+
+class NNClient:
+    def __init__(self, model, dataset, nclasses, epochs, batch_size, lr, gpu, verbose):
+        """
+        Initialize the client with a model and dataset. Also specifies
+        parameters for local learning on the client.
+        """
+
+        self.model = model
+        self.ds = dataset
+        self.nc = nclasses
+        self.epochs = epochs
+        self.device = gpu
+        self.bs = batch_size
+        self.verbose = verbose
+        self.lr = lr
+        self.optim = torch.optim.Adam(
+            self.model.parameters(), weight_decay=0.0, lr=self.lr
+        )
+        self.loss = nn.CrossEntropyLoss()
+
+        self.create_dl()
+
+    def create_dl(self):
+        """
+        Create Torch DataLoader from dataset
+        """
+
+        self.dl = dutils.DataLoader(
+            self.ds, batch_size=self.bs, shuffle=True, num_workers=8
+        )
+
+    def train(self):
+        self.model = self.model.cuda()
+        for epoch in range(self.epochs):
+            epoch_acc = []
+            for bidx, batch in enumerate(self.dl):
+                x, y = batch
+                x = x.to(self.device)
+                y = y.to(self.device).type(torch.long)
+
+                self.optim.zero_grad()
+                y_hat = self.model(x)
+                loss = self.loss(y_hat, y)
+                loss.backward()
+                self.optim.step()
+
+                _, preds = torch.max(y_hat, dim=-1)
+                y = y.cpu()
+                preds = preds.cpu()
+                acc = [preds[idx] == y[idx] for idx in range(len(preds))]
+                acc = np.mean(acc)
+                epoch_acc.append(acc)
+
+            # if self.verbose:
+            #     click.echo(f"\tepoch: {epoch} accuracy: {epoch_acc}")
+
+        self.model = self.model.cpu()
+
+    def update_model(self, new_model):
+        self.model.load_state_dict(new_model)
+
+    def send_model(self):
+        return copy.deepcopy(self.model.cpu())
 
 
 class Client:

@@ -5,6 +5,9 @@ import torchvision.transforms as tf
 from torchvision.datasets import MNIST
 
 from fedhd.fl_trainer import Trainer
+
+# from torchhd.datasets import UCIHAR
+
 from fedhd.ucihar import UCIHAR
 
 
@@ -18,12 +21,16 @@ class Params(object):
         self.gpu = None
         self.rounds = None
         self.verbose = None
+        self.nn_flag = None
 
 
 pass_params = click.make_pass_decorator(Params, ensure=True)
 
 
 @click.group()
+@click.option(
+    '-nn', '--nn_flag', is_flag=True, default=False, show_default=True, help='use nn'
+)
 @click.option(
     "-D", "--dim", default=2000, show_default=True, help="Hypervector dimensionality"
 )
@@ -59,7 +66,9 @@ pass_params = click.make_pass_decorator(Params, ensure=True)
 @click.option("-g", "--gpu", is_flag=True, help="Enable GPU acceleration")
 @click.option("-v", "--verbose", is_flag=True, help="Verbose mode")
 @pass_params
-def main(params, dim, batch_size, nclients, fraction, epochs, rounds, gpu, verbose):
+def main(
+    params, dim, batch_size, nclients, fraction, epochs, rounds, gpu, verbose, nn_flag
+):
     click.echo("Running FedHD")
     params.dim = dim
     params.batch_size = batch_size
@@ -69,6 +78,7 @@ def main(params, dim, batch_size, nclients, fraction, epochs, rounds, gpu, verbo
     params.rounds = rounds
     params.gpu = gpu
     params.verbose = verbose
+    params.nn_flag = nn_flag
 
 
 @main.command()
@@ -76,7 +86,7 @@ def main(params, dim, batch_size, nclients, fraction, epochs, rounds, gpu, verbo
     "-r",
     "--root",
     type=click.Path(exists=True, dir_okay=True),
-    default="/home/paperspace/codezone/data",
+    default="/home/the-noetic/cookiejar/data",
     help="Root directory of the data",
 )
 @pass_params
@@ -86,25 +96,49 @@ def isolet(params, root):
     ds = hd.datasets.ISOLET(root, train=True, download=True)
     test_ds = hd.datasets.ISOLET(root, train=False, download=True)
 
-    click.echo("Creating HD embedding model")
-    embedding = hd.embeddings.Projection(617, params.dim)
+    if params.nn_flag:
+        model = nn.Sequential(
+            nn.Flatten(), nn.Linear(ds[0][0].shape[-1], 128), nn.Linear(128, 26)
+        )
 
-    trainer = Trainer(
-        embedding,
-        params.dim,
-        ds,
-        test_ds,
-        26,
-        params.batch_size,
-        params.nclients,
-        params.fraction,
-        params.rounds,
-        params.epochs,
-        params.gpu,
-        params.verbose,
-    )
-    click.echo("Running federated learning on the ISOLET Dataset")
-    trainer.train()
+        trainer = Trainer(
+            None,
+            0,
+            ds,
+            test_ds,
+            26,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            model,
+        )
+        click.echo("running fl on MNIST NN")
+        trainer.train()
+    else:
+        click.echo("Creating HD embedding model")
+        embedding = hd.embeddings.Projection(617, params.dim)
+
+        trainer = Trainer(
+            embedding,
+            params.dim,
+            ds,
+            test_ds,
+            26,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+        )
+        click.echo("Running federated learning on the ISOLET Dataset")
+        trainer.train()
 
 
 @main.command()
@@ -112,7 +146,7 @@ def isolet(params, root):
     "-r",
     "--root",
     type=click.Path(exists=True, dir_okay=True),
-    default="/home/paperspace/codezone/data",
+    default="/home/the-noetic/cookiejar/data",
     help="Root directory of the data",
 )
 @pass_params
@@ -122,26 +156,50 @@ def ucihar(params, root):
     ds = UCIHAR(root, train=True, download=False)
     test_ds = UCIHAR(root, train=False, download=False)
 
-    click.echo("Creating HD Embedding model")
-    feat_size = ds[0][0].shape[-1]
-    embedding = hd.embeddings.Projection(feat_size, params.dim)
+    if params.nn_flag:
+        model = nn.Sequential(
+            nn.Flatten(), nn.Linear(ds[0][0].shape[-1], 128), nn.Linear(128, 6)
+        )
 
-    trainer = Trainer(
-        embedding,
-        params.dim,
-        ds,
-        test_ds,
-        6,
-        params.batch_size,
-        params.nclients,
-        params.fraction,
-        params.rounds,
-        params.epochs,
-        params.gpu,
-        params.verbose,
-    )
-    click.echo("Running federated learning on the UCIHAR Dataset")
-    trainer.train()
+        trainer = Trainer(
+            None,
+            0,
+            ds,
+            test_ds,
+            6,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            model,
+        )
+        click.echo("running fl on MNIST NN")
+        trainer.train()
+    else:
+        click.echo("Creating HD Embedding model")
+        feat_size = ds[0][0].shape[-1]
+        embedding = hd.embeddings.Projection(feat_size, params.dim)
+
+        trainer = Trainer(
+            embedding,
+            params.dim,
+            ds,
+            test_ds,
+            6,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+        )
+        click.echo("Running federated learning on the UCIHAR Dataset")
+        trainer.train()
 
 
 @main.command()
@@ -149,7 +207,7 @@ def ucihar(params, root):
     "-r",
     "--root",
     type=click.Path(exists=True, dir_okay=True),
-    default="/home/paperspace/codezone/data",
+    default="/home/the-noetic/cookiejar/data",
     help="Root directory of the data",
 )
 @pass_params
@@ -186,7 +244,7 @@ def pamap(params, root):
     "-r",
     "--root",
     type=click.Path(exists=True, dir_okay=True),
-    default="/home/paperspace/codezone/data",
+    default="/home/the-noetic/cookiejar/data",
     help="Root directory of the data",
 )
 @pass_params
@@ -197,25 +255,48 @@ def mnist(params, root):
     ds = MNIST(root, train=True, download=True, transform=transforms)
     test_ds = MNIST(root, train=False, download=True, transform=transforms)
 
-    click.echo("Creating HD embedding model")
-    feat_size = 784
-    embedding = nn.Sequential(
-        nn.Flatten(), hd.embeddings.Projection(feat_size, params.dim)
-    )
+    if params.nn_flag:
+        model = nn.Sequential(nn.Flatten(), nn.Linear(784, 512), nn.Linear(512, 10))
 
-    trainer = Trainer(
-        embedding,
-        params.dim,
-        ds,
-        test_ds,
-        18,
-        params.batch_size,
-        params.nclients,
-        params.fraction,
-        params.rounds,
-        params.epochs,
-        params.gpu,
-        params.verbose,
-    )
-    click.echo("Running federated learning on the MNIST Dataset")
-    trainer.train()
+        trainer = Trainer(
+            None,
+            0,
+            ds,
+            test_ds,
+            10,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            model,
+        )
+        click.echo("running fl on MNIST NN")
+        trainer.train()
+
+    else:
+        click.echo("Creating HD embedding model")
+        feat_size = 784
+        embedding = nn.Sequential(
+            nn.Flatten(), hd.embeddings.Projection(feat_size, params.dim)
+        )
+
+        trainer = Trainer(
+            embedding,
+            params.dim,
+            ds,
+            test_ds,
+            10,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+        )
+        click.echo("Running federated learning on the MNIST Dataset")
+        trainer.train()
