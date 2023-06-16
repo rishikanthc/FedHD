@@ -22,6 +22,7 @@ class Params(object):
         self.rounds = None
         self.verbose = None
         self.nn_flag = None
+        self.expt = None
 
 
 pass_params = click.make_pass_decorator(Params, ensure=True)
@@ -29,7 +30,7 @@ pass_params = click.make_pass_decorator(Params, ensure=True)
 
 @click.group()
 @click.option(
-    '-nn', '--nn_flag', is_flag=True, default=False, show_default=True, help='use nn'
+    "-nn", "--nn_flag", is_flag=True, default=False, show_default=True, help="use nn"
 )
 @click.option(
     "-D", "--dim", default=2000, show_default=True, help="Hypervector dimensionality"
@@ -65,9 +66,20 @@ pass_params = click.make_pass_decorator(Params, ensure=True)
 )
 @click.option("-g", "--gpu", is_flag=True, help="Enable GPU acceleration")
 @click.option("-v", "--verbose", is_flag=True, help="Verbose mode")
+@click.option("-exp", "--expt", default="test", help="Exp name")
 @pass_params
 def main(
-    params, dim, batch_size, nclients, fraction, epochs, rounds, gpu, verbose, nn_flag
+    params,
+    dim,
+    batch_size,
+    nclients,
+    fraction,
+    epochs,
+    rounds,
+    gpu,
+    verbose,
+    nn_flag,
+    expt,
 ):
     click.echo("Running FedHD")
     params.dim = dim
@@ -79,6 +91,7 @@ def main(
     params.gpu = gpu
     params.verbose = verbose
     params.nn_flag = nn_flag
+    params.expt = expt
 
 
 @main.command()
@@ -116,6 +129,7 @@ def isolet(params, root):
             params.verbose,
             params.nn_flag,
             model,
+            params.expt,
         )
         click.echo("running fl on MNIST NN")
         trainer.train()
@@ -136,6 +150,8 @@ def isolet(params, root):
             params.epochs,
             params.gpu,
             params.verbose,
+            params.nn_flag,
+            expt=params.expt,
         )
         click.echo("Running federated learning on the ISOLET Dataset")
         trainer.train()
@@ -176,6 +192,7 @@ def ucihar(params, root):
             params.verbose,
             params.nn_flag,
             model,
+            params.expt,
         )
         click.echo("running fl on MNIST NN")
         trainer.train()
@@ -197,6 +214,8 @@ def ucihar(params, root):
             params.epochs,
             params.gpu,
             params.verbose,
+            params.nn_flag,
+            expt=params.expt,
         )
         click.echo("Running federated learning on the UCIHAR Dataset")
         trainer.train()
@@ -216,25 +235,50 @@ def pamap(params, root):
     click.echo("Loading PAMAP dataset")
     ds = hd.datasets.PAMAP(root, subjects=[1, 2, 3, 4, 5, 6], download=False)
     test_ds = hd.datasets.PAMAP(root, subjects=[7, 8], download=False)
-
-    click.echo("Creating HD embedding model")
     feat_size = ds[0][0].shape[-1]
-    embedding = hd.embeddings.Projection(feat_size, params.dim)
 
-    trainer = Trainer(
-        embedding,
-        params.dim,
-        ds,
-        test_ds,
-        18,
-        params.batch_size,
-        params.nclients,
-        params.fraction,
-        params.rounds,
-        params.epochs,
-        params.gpu,
-        params.verbose,
-    )
+    if params.nn_flag:
+        model = nn.Sequential(
+            nn.Flatten(), nn.Linear(feat_size, 256), nn.Linear(128, 10)
+        )
+
+        trainer = Trainer(
+            None,
+            0,
+            ds,
+            test_ds,
+            10,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            model,
+            params.expt,
+        )
+    else:
+        click.echo("Creating HD embedding model")
+        embedding = hd.embeddings.Projection(feat_size, params.dim)
+
+        trainer = Trainer(
+            embedding,
+            params.dim,
+            ds,
+            test_ds,
+            18,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            expt=params.expt,
+        )
     click.echo("Running federated learning on the PAMAP Dataset")
     trainer.train()
 
@@ -273,6 +317,7 @@ def mnist(params, root):
             params.verbose,
             params.nn_flag,
             model,
+            params.expt,
         )
         click.echo("running fl on MNIST NN")
         trainer.train()
@@ -297,6 +342,8 @@ def mnist(params, root):
             params.epochs,
             params.gpu,
             params.verbose,
+            params.nn_flag,
+            expt=params.expt,
         )
         click.echo("Running federated learning on the MNIST Dataset")
         trainer.train()

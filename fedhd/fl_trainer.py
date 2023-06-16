@@ -5,6 +5,8 @@ import torch
 import torch.utils.data as dutils
 import torchhd.functional as F
 from tqdm import tqdm
+import pandas as pd
+import os
 
 from fedhd.client import Client, NNClient
 
@@ -27,6 +29,7 @@ class Trainer:
         nn_flag,
         model=None,
         lr=3e-3,
+        expt="test",
     ):
         """
         This class initializes the overall federated learning pipeline.
@@ -47,6 +50,7 @@ class Trainer:
         self.lr = lr
         self.model = model
         self.gpu = gpu
+        self.expt = expt
 
         self.gen_client_datasets(dataset)
         self.initialize_clients(dim, nclasses, epochs, batch_size, gpu, verbose, model)
@@ -62,9 +66,9 @@ class Trainer:
         clients = []
         if nn is not None:
             if gpu:
-                dev = 'cuda'
+                dev = "cuda"
             else:
-                dev = 'cpu'
+                dev = "cpu"
 
             for idx in range(self.nc):
                 ds_idx = self.splits[idx]
@@ -123,6 +127,20 @@ class Trainer:
 
         return master
 
+    def logwrite(self, round, acc):
+        df = pd.DataFrame(
+            {"Communication Round": [round], "Accuracy": [acc.cpu().numpy()]}
+        )
+
+        root = "/home/the-noetic/cookiejar/FedHD"
+        logdir = "logs"
+        logfile = os.path.join(root, logdir, f"{self.expt}.csv")
+
+        if round == 0:
+            df.to_csv(logfile, header=True, index=False)
+        else:
+            df.to_csv(logfile, mode="a", header=False, index=False)
+
     def train(self):
         """
         Simulated the federated learning process. For each round of
@@ -130,20 +148,25 @@ class Trainer:
         client is made to train on its corresponding local data partition.
         Performs model aggregation and measures test accuracy.
         """
-        if self.nn_flag:
-            pbar = tqdm(total=self.rounds)
+        num = np.ceil(self.fraction * self.nc).astype(np.intc)
 
+        pbar = tqdm(total=self.rounds)
+        tbar = tqdm(total=num, leave=False)
+
+        if self.nn_flag:
             for round in range(self.rounds):
-                pbar.set_description(f'{round}')
-                num = np.ceil(self.fraction * self.nc).astype(np.intc)
+                pbar.set_description(f"{round}")
                 choices = np.arange(0, self.nc)
                 chosen = np.random.choice(choices, size=(num,), replace=True)
 
                 trained_models = []
-                for cidx in chosen:
+                tbar.reset()
+                for idx, cidx in enumerate(chosen):
+                    tbar.set_description(f"{idx}")
                     self.clients[cidx].train()
                     new_cmodel = self.clients[cidx].send_model()
                     trained_models.append(new_cmodel)
+                    tbar.update()
 
                 new_model = self.average_nns(trained_models)
 
@@ -152,28 +175,40 @@ class Trainer:
 
                 self.model.load_state_dict(new_model)
                 test_acc = self.eval(self.model)
+                self.logwrite(round, test_acc)
                 pbar.update()
-                pbar.set_postfix({'acc': f'{test_acc}'})
+                pbar.set_postfix({"acc": f"{test_acc}"})
+            tbar.close()
             pbar.close()
             test_acc = self.eval(self.model)
             click.echo(f"final acc: {test_acc}")
         else:
             for round in range(self.rounds):
-                num = np.ceil(self.fraction * self.nc).astype(np.intc)
+                pbar.set_description(f"{round}")
                 choices = np.arange(0, self.nc)
                 chosen = np.random.choice(choices, size=(num,), replace=True)
-                class_hvs_update = F.random_hv(self.nclasses, self.dim)
+                # class_hvs_update = F.random_hv(self.nclasses, self.dim).cuda()
+                class_hvs_update = torch.zeros((self.nclasses, self.dim)).cuda()
 
-                for cidx in chosen:
+                tbar.reset()
+                for idx, cidx in enumerate(chosen):
+                    tbar.set_description(f"{idx}")
                     self.clients[cidx].train()
                     new_hvs = self.clients[cidx].send_model()
                     class_hvs_update = F.bundle(class_hvs_update, new_hvs)
+                    tbar.update()
 
                 class_hvs_update /= num
                 self.broadcast(class_hvs_update)
                 test_acc = self.eval(class_hvs_update)
+                self.logwrite(round, test_acc)
+                pbar.update()
+                pbar.set_postfix({"acc": f"{test_acc}"})
 
-            click.echo(f"Comm round: {round} accuracy: {test_acc}")
+            tbar.close()
+            pbar.close()
+            test_acc = self.eval(class_hvs_update)
+            click.echo(f"Final accuracy: {test_acc}")
 
     def broadcast(self, class_hvs_update):
         """
@@ -187,12 +222,13 @@ class Trainer:
         dl = dutils.DataLoader(self.test_ds, batch_size=128, shuffle=False)
         test_acc = 0
 
-        if self.nn_flag:
-            if self.gpu:
-                dev = 'cuda'
-            else:
-                dev = 'cpu'
+        if self.gpu:
+            dev = "cuda"
+            class_hvs = class_hvs.cuda()
+        else:
+            dev = "cpu"
 
+        if self.nn_flag:
             model = class_hvs.to(dev)
             for batch_idx, batch in enumerate(dl):
                 x, y = batch
@@ -205,6 +241,8 @@ class Trainer:
         else:
             for batch_idx, batch in enumerate(dl):
                 x, y = batch
+                y = y.to(dev)
+                x = x.to(dev).float()
                 hvs = self.embedding(x).sign()
                 scores = hvs @ class_hvs.T
                 _, preds = torch.max(scores, dim=-1)

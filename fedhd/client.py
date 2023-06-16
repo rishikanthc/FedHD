@@ -106,11 +106,19 @@ class Client:
         # of epochs specified.
         """
 
+        if self.gpu:
+            dev = 'cuda'
+            self.embedding = self.embedding.cuda()
+            self.class_hvs = self.class_hvs.cuda()
+        else:
+            dev = 'cpu'
+
         for epoch in range(self.epochs):
             epoch_acc = 0
             for batch_idx, batch in enumerate(self.dl):
                 x, y = batch
-                x = x.float()
+                x = x.to(dev).float()
+                y = y.to(dev)
 
                 if self.verbose:
                     click.echo(f"\tDEBUG: data {x.dtype}")
@@ -135,7 +143,10 @@ class Client:
                     self.class_hvs[label] -= incorrect
                     self.class_hvs[label] = F.bundle(hv_label, incorrect.negative())
 
-                acc = [preds[idx] == y[idx] for idx in range(len(y))]
+                acc = [
+                    preds[idx].detach().cpu() == y[idx].detach().cpu()
+                    for idx in range(len(y))
+                ]
                 epoch_acc += sum(acc) / len(acc)
 
             if self.verbose:
