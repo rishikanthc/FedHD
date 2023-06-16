@@ -47,6 +47,7 @@ class Trainer:
         self.embedding = embedding
         self.test_ds = test_dataset
         self.nn_flag = nn_flag
+        self.fhdnn_flag = False
         self.lr = lr
         self.model = model
         self.gpu = gpu
@@ -65,10 +66,11 @@ class Trainer:
 
         clients = []
         if nn is not None:
-            if gpu:
-                dev = "cuda"
-            else:
-                dev = "cpu"
+            dev = gpu
+            # if gpu:
+            #     dev = "cuda"
+            # else:
+            #     dev = "cpu"
 
             for idx in range(self.nc):
                 ds_idx = self.splits[idx]
@@ -182,13 +184,40 @@ class Trainer:
             pbar.close()
             test_acc = self.eval(self.model)
             click.echo(f"final acc: {test_acc}")
+        elif self.fhdnn_flag:
+            for round in range(self.rounds):
+                pbar.set_description(f"{round}")
+                choices = np.arange(0, self.nc)
+                chosen = np.random.choice(choices, size=(num,), replace=True)
+                # class_hvs_update = F.random_hv(self.nclasses, self.dim).cuda()
+                class_hvs_update = torch.zeros((self.nclasses, self.dim)).to(self.gpu)
+
+                tbar.reset()
+                for idx, cidx in enumerate(chosen):
+                    tbar.set_description(f"{idx}")
+                    self.clients[cidx].train()
+                    new_hvs = self.clients[cidx].send_model()
+                    class_hvs_update = F.bundle(class_hvs_update, new_hvs)
+                    tbar.update()
+
+                class_hvs_update /= num
+                self.broadcast(class_hvs_update)
+                test_acc = self.eval(class_hvs_update)
+                self.logwrite(round, test_acc)
+                pbar.update()
+                pbar.set_postfix({"acc": f"{test_acc}"})
+
+            tbar.close()
+            pbar.close()
+            test_acc = self.eval(class_hvs_update)
+            click.echo(f"Final accuracy: {test_acc}")
         else:
             for round in range(self.rounds):
                 pbar.set_description(f"{round}")
                 choices = np.arange(0, self.nc)
                 chosen = np.random.choice(choices, size=(num,), replace=True)
                 # class_hvs_update = F.random_hv(self.nclasses, self.dim).cuda()
-                class_hvs_update = torch.zeros((self.nclasses, self.dim)).cuda()
+                class_hvs_update = torch.zeros((self.nclasses, self.dim)).to(self.gpu)
 
                 tbar.reset()
                 for idx, cidx in enumerate(chosen):
@@ -222,11 +251,12 @@ class Trainer:
         dl = dutils.DataLoader(self.test_ds, batch_size=128, shuffle=False)
         test_acc = 0
 
-        if self.gpu:
-            dev = "cuda"
-            class_hvs = class_hvs.cuda()
-        else:
-            dev = "cpu"
+        dev = self.gpu
+        # if self.gpu:
+        #     dev = "cuda"
+        #     class_hvs = class_hvs.cuda()
+        # else:
+        #     dev = "cpu"
 
         if self.nn_flag:
             model = class_hvs.to(dev)

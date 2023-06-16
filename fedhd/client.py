@@ -106,12 +106,15 @@ class Client:
         # of epochs specified.
         """
 
-        if self.gpu:
-            dev = 'cuda'
-            self.embedding = self.embedding.cuda()
-            self.class_hvs = self.class_hvs.cuda()
-        else:
-            dev = 'cpu'
+        # if self.gpu:
+        #     dev = 'cuda'
+        #     self.embedding = self.embedding.cuda()
+        #     self.class_hvs = self.class_hvs.cuda()
+        # else:
+        #     dev = 'cpu'
+        dev = self.gpu
+        self.embedding = self.embedding.to(dev)
+        self.class_hvs = self.class_hvs.to(dev)
 
         for epoch in range(self.epochs):
             epoch_acc = 0
