@@ -229,6 +229,7 @@ class Trainer:
             test_acc = self.eval(self.model)
             click.echo(f"final acc: {test_acc}")
         else:
+            lr = 1
             for round in range(self.rounds):
                 pbar.set_description(f"{round}")
                 choices = np.arange(0, self.nc)
@@ -239,10 +240,13 @@ class Trainer:
                 tbar.reset()
                 for idx, cidx in enumerate(chosen):
                     tbar.set_description(f"{idx}")
-                    self.clients[cidx].train()
+                    self.clients[cidx].train(lr)
                     new_hvs = self.clients[cidx].send_model()
                     class_hvs_update = F.bundle(class_hvs_update, new_hvs)
                     tbar.update()
+
+                if self.niid:
+                    lr = lr + (1 / (1 + round))
 
                 class_hvs_update /= num
                 self.broadcast(class_hvs_update)

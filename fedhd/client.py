@@ -118,7 +118,7 @@ class Client:
             self.ds, batch_size=self.bs, shuffle=True, num_workers=8
         )
 
-    def train(self):
+    def train(self, lr=1):
         """
         Trains the client model on local dataset for corresponding
         # of epochs specified.
@@ -182,15 +182,15 @@ class Client:
                     # incorrect = incorrect.sum(dim=0, keepdim=True).squeeze()
                     incorrect = incorrect.multibundle()
 
-                    # self.class_hvs[label] += incorrect
-                    self.class_hvs[label] = F.bundle(hv_label, incorrect)
+                    self.class_hvs[label] += incorrect * lr
+                    # self.class_hvs[label] = F.bundle(hv_label, incorrect)
 
                     incorrect = hvs[torch.bitwise_and(y != preds, preds == label)]
                     # incorrect = incorrect.sum(dim=0, keepdim=True).squeeze()
                     incorrect = incorrect.multibundle()
 
-                    # self.class_hvs[label] -= incorrect
-                    self.class_hvs[label] = F.bundle(hv_label, incorrect.negative())
+                    self.class_hvs[label] -= incorrect * lr
+                    # self.class_hvs[label] = F.bundle(hv_label, incorrect.negative())
 
                 acc = [
                     preds[idx].detach().cpu() == y[idx].detach().cpu()

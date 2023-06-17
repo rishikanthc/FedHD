@@ -573,7 +573,7 @@ def cifar100(params, root):
 @click.option("--niid", is_flag=True, default=False)
 @pass_params
 def caltech(params, root, imsize, niid):
-    click.echo("Loading CIFAR100 dataset")
+    click.echo("Loading Caltech101 dataset")
     cifar100_means, cifar100_stds = (0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)
     transforms = tf.Compose(
         [tf.Grayscale(3), tf.ToTensor(), tf.RandomResizedCrop((imsize, imsize))]
@@ -635,6 +635,7 @@ def caltech(params, root, imsize, niid):
             params.gpu,
             params.verbose,
             params.nn_flag,
+            niid,
             expt=params.expt,
             fhdnn=params.fhdnn,
         )
@@ -731,7 +732,7 @@ def flowers(params, root, imsize, niid):
 @click.option("--niid", is_flag=True, default=False)
 @pass_params
 def caltech256(params, root, imsize, niid):
-    click.echo("Loading CIFAR100 dataset")
+    click.echo("Loading Caltech256 dataset")
     cifar100_means, cifar100_stds = (0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)
     transforms = tf.Compose(
         [tf.Grayscale(3), tf.ToTensor(), tf.RandomResizedCrop((imsize, imsize))]
