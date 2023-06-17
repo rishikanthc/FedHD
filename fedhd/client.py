@@ -1,14 +1,18 @@
 import click
 import torch
 import torch.utils.data as dutils
+from torchhd.datasets import PAMAP
 import torch.nn as nn
 import torchhd.functional as F
 import numpy as np
 import copy
+from pl_bolts.models.self_supervised import SimCLR
 
 
 class NNClient:
-    def __init__(self, model, dataset, nclasses, epochs, batch_size, lr, gpu, verbose):
+    def __init__(
+        self, model, dataset, nclasses, epochs, batch_size, lr, gpu, verbose, pamap_flag
+    ):
         """
         Initialize the client with a model and dataset. Also specifies
         parameters for local learning on the client.
@@ -26,6 +30,7 @@ class NNClient:
             self.model.parameters(), weight_decay=0.0, lr=self.lr
         )
         self.loss = nn.CrossEntropyLoss()
+        self.pamap_flag = pamap_flag
 
         self.create_dl()
 
@@ -39,12 +44,13 @@ class NNClient:
         )
 
     def train(self):
-        self.model = self.model.cuda()
+        # self.model = self.model.cuda()
+        self.model = self.model.to(self.device)
         for epoch in range(self.epochs):
             epoch_acc = []
             for bidx, batch in enumerate(self.dl):
                 x, y = batch
-                x = x.to(self.device)
+                x = x.to(self.device).type(torch.float)
                 y = y.to(self.device).type(torch.long)
 
                 self.optim.zero_grad()
@@ -74,7 +80,17 @@ class NNClient:
 
 class Client:
     def __init__(
-        self, embedding, class_hvs, dataset, nclasses, epochs, batch_size, gpu, verbose
+        self,
+        embedding,
+        class_hvs,
+        dataset,
+        nclasses,
+        epochs,
+        batch_size,
+        gpu,
+        verbose,
+        fhdnn,
+        imsize,
     ):
         """
         Initialize the client with a model and dataset. Also specifies
@@ -89,6 +105,8 @@ class Client:
         self.gpu = gpu
         self.bs = batch_size
         self.verbose = verbose
+        self.fhdnn = fhdnn
+        self.imsize = imsize
         self.create_dl()
 
     def create_dl(self):
@@ -116,6 +134,31 @@ class Client:
         self.embedding = self.embedding.to(dev)
         self.class_hvs = self.class_hvs.to(dev)
 
+        if self.fhdnn == 2:
+            # weight_path = "https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_simclr_imagenet/simclr_imagenet.ckpt"
+            weight_path = "/home/the-noetic/cookiejar/FedHD/simclr_models/simclr2.ckpt"
+            feature_extractor = SimCLR.load_from_checkpoint(
+                weight_path,
+                strict=False,
+                dataset="imagenet",
+                maxpool1=False,
+                first_conv=True,
+                input_height=self.imsize,
+            ).to(dev)
+            feature_extractor.freeze()
+        elif self.fhdnn == 1:
+            # weight_path = "https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/simclr-cifar10-v1-exp12_87_52/epoch%3D960.ckpt"
+            weight_path = "/home/the-noetic/cookiejar/FedHD/simclr_models/simclr1.ckpt"
+            feature_extractor = SimCLR.load_from_checkpoint(
+                weight_path,
+                strict=False,
+                dataset="cifar10",
+                maxpool1=False,
+                first_conv=False,
+                input_height=self.imsize,
+            ).to(dev)
+            feature_extractor.freeze()
+
         for epoch in range(self.epochs):
             epoch_acc = 0
             for batch_idx, batch in enumerate(self.dl):
@@ -125,6 +168,9 @@ class Client:
 
                 if self.verbose:
                     click.echo(f"\tDEBUG: data {x.dtype}")
+
+                if self.fhdnn == 1 or self.fhdnn == 2:
+                    x = feature_extractor(x)
 
                 hvs = self.embedding(x).sign()  # bs x D
                 scores = hvs @ self.class_hvs.T  # bs x c
@@ -143,7 +189,7 @@ class Client:
                     # incorrect = incorrect.sum(dim=0, keepdim=True).squeeze()
                     incorrect = incorrect.multibundle()
 
-                    self.class_hvs[label] -= incorrect
+                    # self.class_hvs[label] -= incorrect
                     self.class_hvs[label] = F.bundle(hv_label, incorrect.negative())
 
                 acc = [

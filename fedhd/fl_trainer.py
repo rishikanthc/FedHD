@@ -9,6 +9,8 @@ import pandas as pd
 import os
 
 from fedhd.client import Client, NNClient
+from fedhd.data import separate_by_class, distribute_data
+from pl_bolts.models.self_supervised import SimCLR
 
 
 class Trainer:
@@ -27,9 +29,13 @@ class Trainer:
         gpu,
         verbose,
         nn_flag,
+        niid=False,
         model=None,
         lr=3e-3,
         expt="test",
+        fhdnn=-1,
+        pamap_flag=False,
+        imsize=32,
     ):
         """
         This class initializes the overall federated learning pipeline.
@@ -43,21 +49,45 @@ class Trainer:
         self.nclasses = nclasses
         self.fraction = fraction
         self.dim = dim
+        self.niid = niid
         self.verbose = verbose
         self.embedding = embedding
         self.test_ds = test_dataset
         self.nn_flag = nn_flag
-        self.fhdnn_flag = False
+        self.fhdnn = fhdnn
         self.lr = lr
         self.model = model
         self.gpu = gpu
         self.expt = expt
+        self.fhdnn = fhdnn
+        self.imsize = imsize
 
         self.gen_client_datasets(dataset)
-        self.initialize_clients(dim, nclasses, epochs, batch_size, gpu, verbose, model)
+        self.initialize_clients(
+            dim,
+            nclasses,
+            epochs,
+            batch_size,
+            gpu,
+            verbose,
+            pamap_flag,
+            model,
+            fhdnn,
+            imsize,
+        )
 
     def initialize_clients(
-        self, dim, nclasses, epochs, batch_size, gpu, verbose, nn=None
+        self,
+        dim,
+        nclasses,
+        epochs,
+        batch_size,
+        gpu,
+        verbose,
+        pamap_flag,
+        nn=None,
+        fhdnn=-1,
+        imsize=32,
     ):
         """
         Initializes all clients with the provided model and also assigns it a
@@ -75,7 +105,15 @@ class Trainer:
             for idx in range(self.nc):
                 ds_idx = self.splits[idx]
                 client_idx = NNClient(
-                    nn, ds_idx, nclasses, epochs, batch_size, self.lr, dev, verbose
+                    nn,
+                    ds_idx,
+                    nclasses,
+                    epochs,
+                    batch_size,
+                    self.lr,
+                    dev,
+                    verbose,
+                    pamap_flag,
                 )
                 clients.append(client_idx)
         else:
@@ -92,6 +130,8 @@ class Trainer:
                     batch_size,
                     gpu,
                     verbose,
+                    fhdnn,
+                    imsize,
                 )
                 clients.append(client_idx)
 
@@ -102,21 +142,25 @@ class Trainer:
         """
         Creates data splits for each client. The partition sampling is iid.
         """
-        dlen = len(dataset)
-        split_len = dlen // self.nc
-        last_split = dlen % self.nc
-        split_arr = [split_len] * self.nc
+        if self.niid:
+            classwise = separate_by_class(dataset)
+            self.splits = distribute_data(classwise, self.nc)
+        else:
+            dlen = len(dataset)
+            split_len = dlen // self.nc
+            last_split = dlen % self.nc
+            split_arr = [split_len] * self.nc
 
-        if last_split != 0:
-            split_arr[-1] += last_split
+            if last_split != 0:
+                split_arr[-1] += last_split
 
-        assert sum(split_arr) == dlen
-        assert len(split_arr) == self.nc
+            assert sum(split_arr) == dlen
+            assert len(split_arr) == self.nc
 
-        if self.verbose:
-            click.echo(f"Data len: {dlen} length: {split_len} sum: {sum(split_arr)}")
+            self.splits = dutils.random_split(dataset, split_arr)
 
-        self.splits = dutils.random_split(dataset, split_arr)
+        # if self.verbose:
+        #     click.echo(f"Data len: {dlen} length: {split_len} sum: {sum(split_arr)}")
 
     def average_nns(self, trained_models):
         weights = [mdl.state_dict() for mdl in trained_models]
@@ -184,33 +228,6 @@ class Trainer:
             pbar.close()
             test_acc = self.eval(self.model)
             click.echo(f"final acc: {test_acc}")
-        elif self.fhdnn_flag:
-            for round in range(self.rounds):
-                pbar.set_description(f"{round}")
-                choices = np.arange(0, self.nc)
-                chosen = np.random.choice(choices, size=(num,), replace=True)
-                # class_hvs_update = F.random_hv(self.nclasses, self.dim).cuda()
-                class_hvs_update = torch.zeros((self.nclasses, self.dim)).to(self.gpu)
-
-                tbar.reset()
-                for idx, cidx in enumerate(chosen):
-                    tbar.set_description(f"{idx}")
-                    self.clients[cidx].train()
-                    new_hvs = self.clients[cidx].send_model()
-                    class_hvs_update = F.bundle(class_hvs_update, new_hvs)
-                    tbar.update()
-
-                class_hvs_update /= num
-                self.broadcast(class_hvs_update)
-                test_acc = self.eval(class_hvs_update)
-                self.logwrite(round, test_acc)
-                pbar.update()
-                pbar.set_postfix({"acc": f"{test_acc}"})
-
-            tbar.close()
-            pbar.close()
-            test_acc = self.eval(class_hvs_update)
-            click.echo(f"Final accuracy: {test_acc}")
         else:
             for round in range(self.rounds):
                 pbar.set_description(f"{round}")
@@ -262,17 +279,50 @@ class Trainer:
             model = class_hvs.to(dev)
             for batch_idx, batch in enumerate(dl):
                 x, y = batch
-                x = x.to(dev)
+                x = x.to(dev).float()
                 y = y.to(dev)
                 scores = model(x)
                 _, preds = torch.max(scores, dim=-1)
                 acc = [preds[idx] == y[idx] for idx in range(len(preds))]
                 test_acc += sum(acc) / len(acc)
         else:
+            if self.fhdnn == 2:
+                # weight_path = "https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_simclr_imagenet/simclr_imagenet.ckpt"
+                weight_path = (
+                    "/home/the-noetic/cookiejar/FedHD/simclr_models/simclr2.ckpt"
+                )
+                feature_extractor = SimCLR.load_from_checkpoint(
+                    weight_path,
+                    strict=False,
+                    dataset="imagenet",
+                    maxpool1=False,
+                    first_conv=True,
+                    input_height=self.imsize,
+                ).to(dev)
+                feature_extractor.freeze()
+            elif self.fhdnn == 1:
+                # weight_path = "https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/simclr-cifar10-v1-exp12_87_52/epoch%3D960.ckpt"
+                weight_path = (
+                    "/home/the-noetic/cookiejar/FedHD/simclr_models/simclr1.ckpt"
+                )
+                feature_extractor = SimCLR.load_from_checkpoint(
+                    weight_path,
+                    strict=False,
+                    dataset="cifar10",
+                    maxpool1=False,
+                    first_conv=False,
+                    input_height=self.imsize,
+                ).to(dev)
+                feature_extractor.freeze()
+
             for batch_idx, batch in enumerate(dl):
                 x, y = batch
                 y = y.to(dev)
                 x = x.to(dev).float()
+
+                if self.fhdnn == 1 or self.fhdnn == 2:
+                    x = feature_extractor(x)
+
                 hvs = self.embedding(x).sign()
                 scores = hvs @ class_hvs.T
                 _, preds = torch.max(scores, dim=-1)

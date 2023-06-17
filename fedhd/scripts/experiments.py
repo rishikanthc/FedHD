@@ -2,8 +2,9 @@ import click
 import torch.nn as nn
 import torchhd as hd
 import torchvision.transforms as tf
-from torchvision.datasets import MNIST
-from torch.utils.data import random_split
+from torchvision.datasets import MNIST, CIFAR10, Caltech101, Flowers102, Caltech256
+from torch.utils.data import random_split, DataLoader
+from pl_bolts.models.self_supervised.resnets import resnet18
 
 from fedhd.fl_trainer import Trainer
 from fedhd.data import FaceDataset, PAMAP2Dataset
@@ -24,6 +25,7 @@ class Params(object):
         self.rounds = None
         self.verbose = None
         self.nn_flag = None
+        self.fhdnn = None
         self.expt = None
 
 
@@ -69,6 +71,7 @@ pass_params = click.make_pass_decorator(Params, ensure=True)
 @click.option("-g", "--gpu", default="cuda:0", help="Enable GPU acceleration")
 @click.option("-v", "--verbose", is_flag=True, help="Verbose mode")
 @click.option("-exp", "--expt", default="test", help="Exp name")
+@click.option("--fhdnn", default=-1, help="FHDnn feature extractor spec")
 @pass_params
 def main(
     params,
@@ -82,6 +85,7 @@ def main(
     verbose,
     nn_flag,
     expt,
+    fhdnn,
 ):
     click.echo("Running FedHD")
     params.dim = dim
@@ -94,6 +98,7 @@ def main(
     params.verbose = verbose
     params.nn_flag = nn_flag
     params.expt = expt
+    params.fhdnn = fhdnn
 
 
 @main.command()
@@ -131,9 +136,9 @@ def isolet(params, root):
             params.verbose,
             params.nn_flag,
             model,
-            params.expt,
+            expt=params.expt,
         )
-        click.echo("running fl on MNIST NN")
+        click.echo("running fl on ISOLET NN")
         trainer.train()
     else:
         click.echo("Creating HD embedding model")
@@ -194,9 +199,9 @@ def ucihar(params, root):
             params.verbose,
             params.nn_flag,
             model,
-            params.expt,
+            expt=params.expt,
         )
-        click.echo("running fl on MNIST NN")
+        click.echo("running fl on UCIHAR NN")
         trainer.train()
     else:
         click.echo("Creating HD Embedding model")
@@ -246,7 +251,7 @@ def pamap(params, root):
 
     if params.nn_flag:
         model = nn.Sequential(
-            nn.Flatten(), nn.Linear(feat_size, 256), nn.Linear(128, 10)
+            nn.Flatten(), nn.Linear(feat_size, 128), nn.Linear(128, 19)
         )
 
         trainer = Trainer(
@@ -254,7 +259,7 @@ def pamap(params, root):
             0,
             ds,
             test_ds,
-            10,
+            19,
             params.batch_size,
             params.nclients,
             params.fraction,
@@ -264,7 +269,8 @@ def pamap(params, root):
             params.verbose,
             params.nn_flag,
             model,
-            params.expt,
+            expt=params.expt,
+            pamap_flag=True,
         )
     else:
         click.echo("Creating HD embedding model")
@@ -275,7 +281,7 @@ def pamap(params, root):
             params.dim,
             ds,
             test_ds,
-            18,
+            19,
             params.batch_size,
             params.nclients,
             params.fraction,
@@ -307,7 +313,7 @@ def mnist(params, root):
     test_ds = MNIST(root, train=False, download=True, transform=transforms)
 
     if params.nn_flag:
-        model = nn.Sequential(nn.Flatten(), nn.Linear(784, 512), nn.Linear(512, 10))
+        model = nn.Sequential(nn.Flatten(), nn.Linear(784, 320), nn.Linear(50, 10))
 
         trainer = Trainer(
             None,
@@ -324,7 +330,7 @@ def mnist(params, root):
             params.verbose,
             params.nn_flag,
             model,
-            params.expt,
+            expt=params.expt,
         )
         click.echo("running fl on MNIST NN")
         trainer.train()
@@ -377,7 +383,7 @@ def face(params, root):
     feat_size = 608
 
     if params.nn_flag:
-        model = nn.Sequential(nn.Flatten(), nn.Linear(feat_size, 512), nn.Linear(512, 2))
+        model = nn.Sequential(nn.Flatten(), nn.Linear(feat_size, 128), nn.Linear(128, 2))
 
         trainer = Trainer(
             None,
@@ -394,9 +400,9 @@ def face(params, root):
             params.verbose,
             params.nn_flag,
             model,
-            params.expt,
+            expt=params.expt,
         )
-        click.echo("running fl on MNIST NN")
+        click.echo("running fl on FACE NN")
         trainer.train()
 
     else:
@@ -422,4 +428,373 @@ def face(params, root):
             expt=params.expt,
         )
         click.echo("Running federated learning on the FACE Dataset")
+        trainer.train()
+
+
+@main.command()
+@click.option(
+    "-r",
+    "--root",
+    type=click.Path(exists=True, dir_okay=True),
+    default="/home/the-noetic/cookiejar/data",
+    help="Root directory of the data",
+)
+@pass_params
+def cifar10(params, root):
+    click.echo("Loading CIFAR10 dataset")
+    cifar10_means, cifar10_stds = (0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)
+    transforms = tf.Compose([tf.ToTensor()])
+    ds = CIFAR10(root, train=True, download=True, transform=transforms)
+    test_ds = CIFAR10(root, train=False, download=True, transform=transforms)
+    feat_size = 2048
+
+    if params.nn_flag:
+        model = nn.Sequential(nn.Flatten(), nn.Linear(feat_size, 128), nn.Linear(128, 2))
+
+        trainer = Trainer(
+            None,
+            0,
+            ds,
+            test_ds,
+            10,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            model,
+            expt=params.expt,
+        )
+        click.echo("running fl on CIFAR10 NN")
+        trainer.train()
+
+    else:
+        click.echo("Creating HD embedding model")
+        embedding = hd.embeddings.Projection(feat_size, params.dim)
+
+        trainer = Trainer(
+            embedding,
+            params.dim,
+            ds,
+            test_ds,
+            10,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            expt=params.expt,
+            fhdnn=params.fhdnn,
+        )
+        click.echo("Running federated learning on the CIFAR10 Dataset")
+        trainer.train()
+
+
+@main.command()
+@click.option(
+    "-r",
+    "--root",
+    type=click.Path(exists=True, dir_okay=True),
+    default="/home/the-noetic/cookiejar/data",
+    help="Root directory of the data",
+)
+@pass_params
+def cifar100(params, root):
+    click.echo("Loading CIFAR100 dataset")
+    cifar100_means, cifar100_stds = (0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)
+    transforms = tf.Compose([tf.ToTensor()])
+    ds = CIFAR100(root, train=True, download=True, transform=transforms)
+    test_ds = CIFAR100(root, train=False, download=True, transform=transforms)
+    feat_size = 2048
+
+    if params.nn_flag:
+        model = nn.Sequential(nn.Flatten(), nn.Linear(feat_size, 128), nn.Linear(128, 2))
+
+        trainer = Trainer(
+            None,
+            0,
+            ds,
+            test_ds,
+            100,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            model,
+            expt=params.expt,
+        )
+        click.echo("running fl on CIFAR100 NN")
+        trainer.train()
+
+    else:
+        click.echo("Creating HD embedding model")
+        embedding = hd.embeddings.Projection(feat_size, params.dim)
+
+        trainer = Trainer(
+            embedding,
+            params.dim,
+            ds,
+            test_ds,
+            100,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            expt=params.expt,
+            fhdnn=params.fhdnn,
+        )
+        click.echo("Running federated learning on the CIFAR100 Dataset")
+        trainer.train()
+
+
+@main.command()
+@click.option(
+    "-r",
+    "--root",
+    type=click.Path(exists=True, dir_okay=True),
+    default="/home/the-noetic/cookiejar/data",
+    help="Root directory of the data",
+)
+@click.option("--imsize", default=144)
+@click.option("--niid", is_flag=True, default=False)
+@pass_params
+def caltech(params, root, imsize, niid):
+    click.echo("Loading CIFAR100 dataset")
+    cifar100_means, cifar100_stds = (0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)
+    transforms = tf.Compose(
+        [tf.Grayscale(3), tf.ToTensor(), tf.RandomResizedCrop((imsize, imsize))]
+    )
+    all_ds = Caltech101(root, download=True, transform=transforms)
+    split = int(0.75 * len(all_ds))
+    rem = len(all_ds) - split
+    ds, test_ds = random_split(all_ds, [split, rem])
+    feat_size = 2048
+
+    # dl = DataLoader(ds, batch_size=128)
+    # for batch in dl:
+    #     x, y = batch
+    #     print(x.shape, y.shape)
+    # exit()
+
+    if params.nn_flag:
+        # model = nn.Sequential(
+        #     nn.Flatten(), nn.Linear(feat_size, 128), nn.Linear(128, 101)
+        # )
+        model = resnet18(num_classes=101, fhdnn=False)
+
+        trainer = Trainer(
+            None,
+            0,
+            ds,
+            test_ds,
+            101,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            niid,
+            model,
+            expt=params.expt,
+        )
+        click.echo("running fl on Caltech101 NN")
+        trainer.train()
+
+    else:
+        click.echo("Creating HD embedding model")
+        embedding = hd.embeddings.Projection(feat_size, params.dim)
+
+        trainer = Trainer(
+            embedding,
+            params.dim,
+            ds,
+            test_ds,
+            101,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            expt=params.expt,
+            fhdnn=params.fhdnn,
+        )
+        click.echo("Running federated learning on the Caltech101 Dataset")
+        trainer.train()
+
+
+@main.command()
+@click.option(
+    "-r",
+    "--root",
+    type=click.Path(exists=True, dir_okay=True),
+    default="/home/the-noetic/cookiejar/data",
+    help="Root directory of the data",
+)
+@click.option("--imsize", default=224)
+@click.option("--niid", is_flag=True, default=False)
+@pass_params
+def flowers(params, root, imsize, niid):
+    click.echo("Loading Oxford Flowers dataset")
+    # cifar100_means, cifar100_stds = (0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)
+    transforms = tf.Compose([tf.ToTensor(), tf.Resize((imsize, imsize))])
+    ds = Flowers102(root, split="train", download=True, transform=transforms)
+    test_ds = Flowers102(root, split="test", download=True, transform=transforms)
+    feat_size = 2048
+
+    # dl = DataLoader(ds, batch_size=128)
+    # for batch in dl:
+    #     x, y = batch
+    #     print(x.shape, y.shape)
+    # exit()
+
+    if params.nn_flag:
+        model = nn.Sequential(
+            nn.Flatten(), nn.Linear(feat_size, 128), nn.Linear(128, 102)
+        )
+
+        trainer = Trainer(
+            None,
+            0,
+            ds,
+            test_ds,
+            102,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            niid,
+            model,
+            expt=params.expt,
+        )
+        click.echo("running fl on Oxford flowers NN")
+        trainer.train()
+
+    else:
+        click.echo("Creating HD embedding model")
+        embedding = hd.embeddings.Projection(feat_size, params.dim)
+
+        trainer = Trainer(
+            embedding,
+            params.dim,
+            ds,
+            test_ds,
+            102,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            expt=params.expt,
+            fhdnn=params.fhdnn,
+            imsize=imsize,
+        )
+        click.echo("Running federated learning on the Oxford flowers Dataset")
+        trainer.train()
+
+
+@main.command()
+@click.option(
+    "-r",
+    "--root",
+    type=click.Path(exists=True, dir_okay=True),
+    default="/home/the-noetic/cookiejar/data",
+    help="Root directory of the data",
+)
+@click.option("--imsize", default=144)
+@click.option("--niid", is_flag=True, default=False)
+@pass_params
+def caltech256(params, root, imsize, niid):
+    click.echo("Loading CIFAR100 dataset")
+    cifar100_means, cifar100_stds = (0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)
+    transforms = tf.Compose(
+        [tf.Grayscale(3), tf.ToTensor(), tf.RandomResizedCrop((imsize, imsize))]
+    )
+    all_ds = Caltech256(root, download=True, transform=transforms)
+    split = int(0.75 * len(all_ds))
+    rem = len(all_ds) - split
+    ds, test_ds = random_split(all_ds, [split, rem])
+    feat_size = 2048
+
+    # dl = DataLoader(ds, batch_size=128)
+    # for batch in dl:
+    #     x, y = batch
+    #     print(x.shape, y.shape)
+    # exit()
+
+    if params.nn_flag:
+        # model = nn.Sequential(
+        #     nn.Flatten(), nn.Linear(feat_size, 128), nn.Linear(128, 256)
+        # )
+        model = resnet18(num_classes=256, fhdnn=False)
+
+        trainer = Trainer(
+            None,
+            0,
+            ds,
+            test_ds,
+            256,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            niid,
+            model,
+            expt=params.expt,
+        )
+        click.echo("running fl on Caltech256 NN")
+        trainer.train()
+
+    else:
+        click.echo("Creating HD embedding model")
+        embedding = hd.embeddings.Projection(feat_size, params.dim)
+
+        trainer = Trainer(
+            embedding,
+            params.dim,
+            ds,
+            test_ds,
+            256,
+            params.batch_size,
+            params.nclients,
+            params.fraction,
+            params.rounds,
+            params.epochs,
+            params.gpu,
+            params.verbose,
+            params.nn_flag,
+            expt=params.expt,
+            fhdnn=params.fhdnn,
+        )
+        click.echo("Running federated learning on the Caltech256 Dataset")
         trainer.train()

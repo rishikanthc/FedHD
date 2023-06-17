@@ -72,3 +72,42 @@ class PAMAP2Dataset(Dataset):
             datum = self.transform(datum)
 
         return torch.from_numpy(datum), torch.tensor(label)
+
+
+class CustomDataset(Dataset):
+    def __init__(self, data, labels):
+        self.data = data
+        self.labels = labels
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        return self.data[idx], self.labels[idx]
+
+
+def separate_by_class(dataset):
+    class_samples = defaultdict(list)
+    for data, label in trainset:
+        class_samples[label].append(data)
+    return class_samples
+
+
+def distribute_data(class_samples, n_devices):
+    device_datasets = {}
+    device_data = defaultdict(list)
+    device_labels = defaultdict(list)
+    devices_cycle = cycle(range(n_devices))
+
+    for label, samples in class_samples.items():
+        random.shuffle(samples)
+        for device, sample in zip(devices_cycle, samples):
+            device_data[device].append(sample)
+            device_labels[device].append(label)
+
+    for device in range(n_devices):
+        device_datasets[device] = CustomDataset(
+            device_data[device], device_labels[device]
+        )
+
+    return device_datasets
