@@ -269,7 +269,7 @@ class Trainer:
             self.clients[idx].update_model(class_hvs_update)
 
     def eval(self, class_hvs):
-        dl = dutils.DataLoader(self.test_ds, batch_size=128, shuffle=False)
+        dl = dutils.DataLoader(self.test_ds, batch_size=1024, shuffle=False)
         test_acc = 0
 
         dev = self.gpu

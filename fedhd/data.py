@@ -3,6 +3,9 @@ from torch.utils.data import Dataset
 import os
 import numpy as np
 import torch
+from collections import defaultdict
+from itertools import cycle
+import random
 
 
 class FaceDataset(Dataset):
@@ -88,8 +91,8 @@ class CustomDataset(Dataset):
 
 def separate_by_class(dataset):
     class_samples = defaultdict(list)
-    for data, label in trainset:
-        class_samples[label].append(data)
+    for data, label in dataset:
+        class_samples[label].append((data, label))
     return class_samples
 
 
@@ -101,7 +104,7 @@ def distribute_data(class_samples, n_devices):
 
     for label, samples in class_samples.items():
         random.shuffle(samples)
-        for device, sample in zip(devices_cycle, samples):
+        for device, (sample, label) in zip(devices_cycle, samples):
             device_data[device].append(sample)
             device_labels[device].append(label)
 

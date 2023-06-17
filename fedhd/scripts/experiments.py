@@ -2,7 +2,14 @@ import click
 import torch.nn as nn
 import torchhd as hd
 import torchvision.transforms as tf
-from torchvision.datasets import MNIST, CIFAR10, Caltech101, Flowers102, Caltech256
+from torchvision.datasets import (
+    MNIST,
+    CIFAR10,
+    Caltech101,
+    Flowers102,
+    Caltech256,
+    CIFAR100,
+)
 from torch.utils.data import random_split, DataLoader
 from pl_bolts.models.self_supervised.resnets import resnet18
 
@@ -504,8 +511,9 @@ def cifar10(params, root):
     default="/home/the-noetic/cookiejar/data",
     help="Root directory of the data",
 )
+@click.option("--niid", is_flag=True, default=False)
 @pass_params
-def cifar100(params, root):
+def cifar100(params, root, niid):
     click.echo("Loading CIFAR100 dataset")
     cifar100_means, cifar100_stds = (0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)
     transforms = tf.Compose([tf.ToTensor()])
@@ -554,6 +562,7 @@ def cifar100(params, root):
             params.gpu,
             params.verbose,
             params.nn_flag,
+            niid,
             expt=params.expt,
             fhdnn=params.fhdnn,
         )
